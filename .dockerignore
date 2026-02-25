@@ -1,6 +1,7 @@
 .venv
-vectorstore/chroma
 __pycache__
+*.pyc
 .env
+vectorstore
 .DS_Store
-.vscode
+.git

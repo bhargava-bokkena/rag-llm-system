@@ -1,0 +1,9 @@
+A Retrieval-Augmented Generation (RAG) system consists of:
+1. Document ingestion
+2. Text chunking
+3. Embedding generation
+4. Vector similarity search
+5. LLM-based response synthesis
+
+The system returns answers grounded in internal documents.
+
