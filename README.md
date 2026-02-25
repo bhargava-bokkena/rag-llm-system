@@ -1,161 +1,292 @@
-Production-Style RAG / LLM System
+Project 2 — Production-Style RAG / LLM System
 
-A production-style Retrieval-Augmented Generation (RAG) microservice built with:
+This project implements a complete production-style RAG (Retrieval-Augmented Generation) workflow, taking a document set from:
+Ingestion → Chunking → Embeddings → Vector DB (Chroma) → Retrieval → LLM Answering → API Serving → Logging/Tracing → Evaluation → Docker → CI
 
-OpenAI embeddings
+It is designed to imitate how modern enterprise LLM/RAG systems are built.
 
-Chroma vector database
+Features
 
-FastAPI
+This project includes:
 
-Structured logging and tracing
+Document ingestion + deterministic chunking from data/raw/
 
-Evaluation harness
+OpenAI embeddings (default: text-embedding-3-small, 1536-dim)
 
-Docker
+Chroma vector database with persistent storage (vectorstore/chroma)
 
-GitHub Actions CI
+Retrieval pipeline (top-K) with sources + similarity distances
 
-Overview
+LLM answer synthesis grounded strictly in retrieved context
 
-This project implements an end-to-end RAG pipeline designed to resemble a real enterprise AI microservice.
+Request tracing + latency metrics (x-trace-id, x-duration-ms, plus stage metrics)
 
-It ingests internal documentation, stores vector embeddings, retrieves relevant context at query time, and generates grounded LLM responses — with observability, persistence, and evaluation.
+Evaluation harness (scripts/eval.py) for grounding + latency checks
 
-Architecture
-1. Ingestion Layer
+Dockerized API service with persistent vectorstore volume mount
 
-Load .txt documents from data/raw/
+Pytest smoke tests
 
-Chunk text deterministically
+GitHub Actions CI (pytest + Docker build)
 
-Generate OpenAI embeddings (text-embedding-3-small, 1536-dim)
+Safety guards: embedding model/dimension metadata + startup compatibility check
 
-Persist vectors into Chroma
+Operational controls: RESET_COLLECTION + COLLECTION_NAME for safe re-ingestion
 
-Store embedding metadata (embedding_model, embedding_dim) to prevent dimension mismatches
+How to Run Locally
+Create virtual environment & install dependencies
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+Create .env
+cp .env.example .env
 
-Run ingestion:
+Set at minimum:
+
+OPENAI_API_KEY=YOUR_KEY_HERE
+
+(Optional but recommended defaults)
+
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4.1-mini
+EMBEDDING_MODEL=text-embedding-3-small
+VECTOR_DB_DIR=vectorstore/chroma
+COLLECTION_NAME=documents
+RESET_COLLECTION=false
+Ingest documents into Chroma
+
+Put .txt files into data/raw/, then run:
 
 python -m scripts.ingest
-2. Query (RAG) Pipeline
 
-On each request:
+This will:
 
-Embed user query
+load docs
 
-Perform top-K vector similarity search
+chunk them
 
-Build grounded prompt using retrieved context
+embed chunks
 
-Call LLM for response synthesis
+store in Chroma with metadata: source, doc_id, chunk_index, embedding_model, embedding_dim
 
-Return:
+Run FastAPI server locally
+uvicorn app.main:app --reload --port 8000
 
-Answer
+Test endpoints:
 
-Source documents
+curl http://127.0.0.1:8000/api/v1/health
 
-Similarity distances
-
-Latency metrics
-
-API endpoint:
-
-POST /api/v1/ask
-
-Example:
+Ask a question:
 
 curl -X POST "http://127.0.0.1:8000/api/v1/ask" \
   -H "Content-Type: application/json" \
   -d '{"question":"What does the internal knowledge base contain?","top_k":2}'
-Observability
 
-Each request includes:
+You will receive:
+
+answer
+
+sources (source path + distance)
+
+metrics (retrieve_ms, llm_ms, total_ms)
+And response headers:
 
 x-trace-id
 
 x-duration-ms
 
-Response JSON includes stage metrics:
-
-retrieve_ms
-
-llm_ms
-
-total_ms
-
-Structured logging enables trace-level debugging and latency inspection.
-
 Evaluation
 
-Run:
+With the API running, run:
 
 python -m scripts.eval
 
-The evaluation script:
+This outputs:
 
-Runs a small test suite
+pass/fail checks
 
-Validates grounding behavior
+avg latency
 
-Checks fallback responses
+per-question latency + top source
 
-Measures latency
+grounding behavior (“I don’t know” when context is missing)
 
-Reports pass rate
-
-Docker Deployment
-
-Build image:
-
+Run with Docker
+Build image
 docker build -t rag-llm-system:latest .
-
-Run container:
-
+Run container
 docker run --rm -p 8000:8000 --env-file .env rag-llm-system:latest
-
-Run with persistent vector store:
-
+Run container with persistent vector store
 docker run --rm \
   -p 8000:8000 \
   --env-file .env \
   -v "$(pwd)/vectorstore/chroma:/app/vectorstore/chroma" \
   rag-llm-system:latest
-Tests
+Test
+curl http://127.0.0.1:8000/api/v1/health
+Architecture Overview
 
-Run tests:
+This project follows a clean RAG architecture with separate components for:
 
-pytest -q
+Ingestion (offline job)
 
-CI validates:
+Vector store (persistent DB)
 
-Unit tests
+Query pipeline (retrieve + synthesize)
 
-Docker build
+Serving (FastAPI)
 
-Engineering Notes
+Observability (trace IDs + latency metrics)
 
-Resolved embedding dimension mismatch (384 vs 1536) when switching embedding providers
+Evaluation (repeatable checks)
 
-Added embedding model and dimension metadata guard
+Packaging (Docker)
 
-Implemented request tracing and latency instrumentation
+CI (tests + docker build)
 
-Separated ingestion from query service (production-style architecture)
+Components
+Ingestion
 
-Built evaluation harness for grounding validation
+Code: app/rag/ingestion.py and scripts/ingest.py
 
-Tech Stack
+Loads docs from data/raw/
 
-Python 3.11
+Chunks + metadata enrichment
 
-FastAPI
+Embeds with OpenAI embeddings
 
-Chroma
+Stores in Chroma (vectorstore/chroma)
 
-OpenAI API
+Supports operational controls:
 
-Docker
+COLLECTION_NAME
 
-GitHub Actions
+RESET_COLLECTION
+
+Vector Store
+
+Code: app/rag/vectorstore.py
+
+Chroma persistent client
+
+Collection-based storage
+
+Retrieval + RAG
+
+Retrieval: app/rag/retrieval.py
+
+RAG orchestration: app/rag/__init__.py
+
+LLM + embeddings client: app/rag/llm.py
+
+Response returns sources + distances + stage metrics
+
+Serving
+
+FastAPI: app/main.py, app/api/v1/routes.py
+
+Endpoints:
+
+/api/v1/health
+
+/api/v1/ask
+
+Safety / Guardrails
+
+Stores embedding_model + embedding_dim in metadata at ingest time
+
+Startup compatibility guard fails fast if EMBEDDING_MODEL changed without re-ingestion
+
+Guard code: app/rag/guards.py
+
+High-Level Architecture Diagram (ASCII)
+                 +----------------------+
+                 |   data/raw/*.txt     |
+                 +----------+-----------+
+                            |
+                            v
+                 +----------------------+
+                 |  Ingestion Job       |
+                 |  scripts/ingest.py   |
+                 |  - load + chunk      |
+                 |  - embed (OpenAI)    |
+                 |  - add metadata      |
+                 +----------+-----------+
+                            |
+                            v
+                 +----------------------+
+                 |  Chroma Vector DB    |
+                 |  vectorstore/chroma  |
+                 |  collection=documents|
+                 +----------+-----------+
+                            ^
+                            |
+        +-------------------+-------------------+
+        |                                       |
+        v                                       v
++----------------------+               +----------------------+
+| FastAPI Service      |               | Evaluation Harness   |
+| app.main + /ask      |               | scripts/eval.py      |
+| - embed query        |               | - sends queries      |
+| - top-K retrieval    |               | - checks grounding   |
+| - build prompt       |               | - tracks latency     |
+| - LLM answer         |               +----------------------+
++----------+-----------+
+           |
+           v
+   +------------------+
+   | Client / curl     |
+   +------------------+
+CI (GitHub Actions)
+
+Workflow: .github/workflows/ci.yml
+
+Runs:
+
+pytest
+
+Docker build validation
+
+What I Learned / Skills Demonstrated
+LLM / RAG Engineering
+
+Building an end-to-end RAG pipeline (ingest → embed → retrieve → generate)
+
+Designing grounded responses with explicit source context
+
+Vector similarity search and retrieval tuning (top-K, distances)
+
+Software Engineering
+
+FastAPI microservice design
+
+Structured logging, trace IDs, and request-level latency instrumentation
+
+Clean module separation (ingestion vs query-time serving)
+
+Testing & Evaluation
+
+Pytest API smoke tests
+
+Lightweight RAG evaluation harness (grounding + latency)
+
+DevOps / Infrastructure
+
+Dockerized deployment with persistent vectorstore volume mounts
+
+CI automation via GitHub Actions
+
+Operational controls for safe re-ingestion and configuration drift prevention
+
+Project Status
+
+✔️ Ingestion + chunking working
+✔️ OpenAI embeddings + Chroma persistence working
+✔️ Retrieval + grounded LLM answering working
+✔️ Logging/tracing + latency metrics working
+✔️ Evaluation harness working
+✔️ Docker container working with persisted vectorstore
+✔️ CI pipeline working
+✔️ Documentation complete
+
+End of File
