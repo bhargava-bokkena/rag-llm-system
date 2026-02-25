@@ -2,40 +2,44 @@ Production-Style RAG / LLM System
 
 This project implements a complete production-style RAG (Retrieval-Augmented Generation) workflow, taking a document set from:
 
-**Ingestion → Chunking → Embeddings → Vector DB (Chroma) → Retrieval → LLM Answering → API Serving → Logging/Tracing → Evaluation → Docker → CI**
+Ingestion → Chunking → Embeddings → Vector DB (Chroma) → Retrieval → LLM Answering → API Serving → Logging/Tracing → Evaluation → Docker → CI
 
 It is designed to imitate how modern enterprise LLM/RAG systems are built.
 
----
-
-## Features
+Features
 
 This project includes:
 
-- Document ingestion and deterministic chunking (`data/raw/`)
-- OpenAI embeddings (`text-embedding-3-small`, 1536-dim)
-- Chroma vector database with persistent storage
-- Retrieval pipeline (top-K) with sources and similarity distances
-- LLM answer synthesis grounded strictly in retrieved context
-- Request tracing and latency metrics (`x-trace-id`, `x-duration-ms`)
-- Evaluation harness (`scripts/eval.py`)
-- Dockerized API service with persistent vectorstore volume mount
-- Pytest smoke tests
-- GitHub Actions CI (pytest + Docker build)
-- Safety guard: embedding metadata + startup compatibility check
-- Operational controls: `RESET_COLLECTION` and `COLLECTION_NAME`
+Document ingestion and deterministic chunking from data/raw/
 
----
+OpenAI embeddings (text-embedding-3-small, 1536-dim)
 
-## How to Run Locally
+Chroma vector database with persistent storage (vectorstore/chroma)
 
-### Create virtual environment and install dependencies
+Retrieval pipeline (top-K) with sources and similarity distances
 
-```bash
+LLM answer synthesis grounded strictly in retrieved context
+
+Request tracing and latency metrics
+
+Evaluation harness (scripts/eval.py)
+
+Dockerized API service with persistent vectorstore volume mount
+
+Pytest smoke tests
+
+GitHub Actions CI pipeline
+
+Embedding compatibility guard to prevent dimension mismatch
+
+Operational controls: RESET_COLLECTION and COLLECTION_NAME
+
+How to Run Locally
+1. Set up virtual environment and install dependencies
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-Create .env
+2. Create environment variables
 cp .env.example .env
 
 Set at minimum:
@@ -50,12 +54,23 @@ EMBEDDING_MODEL=text-embedding-3-small
 VECTOR_DB_DIR=vectorstore/chroma
 COLLECTION_NAME=documents
 RESET_COLLECTION=false
-Ingest Documents
+3. Ingest documents
 
 Put .txt files into data/raw/, then run:
 
 python -m scripts.ingest
-Run the API
+
+This will:
+
+Load documents
+
+Chunk text
+
+Generate embeddings
+
+Store vectors in Chroma with metadata
+
+4. Run the FastAPI service
 uvicorn app.main:app --reload --port 8000
 
 Health check:
@@ -67,84 +82,137 @@ Ask a question:
 curl -X POST "http://127.0.0.1:8000/api/v1/ask" \
   -H "Content-Type: application/json" \
   -d '{"question":"What does the internal knowledge base contain?","top_k":2}'
-Evaluation
-
-With the API running:
-
+5. Run evaluation harness
 python -m scripts.eval
+
+Outputs:
+
+Pass/fail checks
+
+Average latency
+
+Per-query metrics
+
+Grounding validation
+
 Run with Docker
 Build image
 docker build -t rag-llm-system:latest .
 Run container
 docker run --rm -p 8000:8000 --env-file .env rag-llm-system:latest
-Run with persistent vector store
+Run with persistent vectorstore
 docker run --rm \
   -p 8000:8000 \
   --env-file .env \
   -v "$(pwd)/vectorstore/chroma:/app/vectorstore/chroma" \
   rag-llm-system:latest
+Architecture Overview
+
+This project follows a clean RAG architecture with dedicated components for:
+
+Document ingestion
+
+Vector storage
+
+Retrieval pipeline
+
+LLM answer synthesis
+
+API serving
+
+Observability and tracing
+
+Evaluation
+
+Containerized deployment
+
+CI validation
+
 High-Level Architecture Diagram
-data/raw/*.txt
-        |
-        v
-+----------------------+
-| Ingestion Job         |
-| scripts/ingest.py     |
-| - chunk               |
-| - embed (OpenAI)      |
-| - add metadata        |
-+----------------------+
-        |
-        v
-+----------------------+
-| Chroma Vector DB      |
-| vectorstore/chroma    |
-| collection=documents  |
-+----------------------+
-        ^
-        |
-+----------------------+
-| FastAPI Service       |
-| POST /api/v1/ask      |
-| - embed query         |
-| - top-K retrieval     |
-| - build prompt        |
-| - LLM answer          |
-+----------------------+
-        |
-        v
-Client (curl / app)
-CI
+Components
+Ingestion
 
-GitHub Actions runs:
+Loads raw documents
 
-pytest
+Chunks text deterministically
+
+Generates OpenAI embeddings
+
+Stores metadata including embedding model and dimension
+
+Vector Store
+
+Chroma persistent client
+
+Collection-based storage
+
+Startup compatibility guard
+
+Retrieval + RAG
+
+Query embedding
+
+Top-K similarity search
+
+Context-grounded LLM answer synthesis
+
+Serving
+
+FastAPI application
+
+Structured logging
+
+Trace IDs and latency metrics
+
+CI Automation
+
+GitHub Actions workflow
+
+Pytest execution
 
 Docker build validation
 
-What This Demonstrates
+What I Learned / Skills Demonstrated
+LLM Engineering
 
-End-to-end RAG system design (ingest → embed → retrieve → generate)
+Designing end-to-end RAG systems
 
-Vector database integration and persistence
+Implementing vector search and retrieval
 
-Grounded LLM answering with sources
+Enforcing grounded LLM answering
 
-Observability with tracing and latency instrumentation
+Software Engineering
 
-Safe configuration management (guards + reset controls)
+Building modular API services with FastAPI
 
-Containerized deployment and CI automation
+Adding observability and performance metrics
+
+Managing configuration safely
+
+DevOps / CI/CD
+
+Dockerizing services
+
+Persisting vector databases
+
+Automating validation via GitHub Actions
 
 Project Status
 
-✔️ Ingestion + chunking working
-✔️ OpenAI embeddings + Chroma persistence working
-✔️ Retrieval + grounded LLM answering working
-✔️ Logging/tracing + latency metrics working
-✔️ Evaluation harness working
-✔️ Docker container working with persisted vectorstore
-✔️ CI pipeline working
-✔️ Documentation complete
+Ingestion pipeline implemented
+
+Vector persistence operational
+
+Retrieval and grounded answering functional
+
+Logging and tracing implemented
+
+Evaluation harness operational
+
+Docker deployment working
+
+CI pipeline functional
+
+Documentation complete
 
 End of File
