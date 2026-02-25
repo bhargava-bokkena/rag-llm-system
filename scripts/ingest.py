@@ -1,7 +1,7 @@
 from app.core.config import settings
 from app.rag.ingestion import load_txt_documents, make_chunks
 from app.rag.llm import embed_texts
-from app.rag.vectorstore import get_collection
+from app.rag.vectorstore import get_collection, get_chroma_client
 
 
 if __name__ == "__main__":
@@ -17,15 +17,24 @@ if __name__ == "__main__":
 
     embeddings = embed_texts(texts)
 
-    # ✅ dimension/model guard goes BEFORE writing to Chroma
     dim = len(embeddings[0])
     for m in metas:
         m["embedding_model"] = settings.EMBEDDING_MODEL
         m["embedding_dim"] = dim
 
-    collection = get_collection("documents")
+    collection_name = settings.COLLECTION_NAME
 
-    # simple dev reset: delete ids if they exist
+    if settings.RESET_COLLECTION:
+        print(f"RESET_COLLECTION=true -> deleting and recreating '{collection_name}'")
+        client = get_chroma_client()
+        try:
+            client.delete_collection(collection_name)
+        except Exception:
+            pass
+
+    collection = get_collection(collection_name)
+
+    # safe "upsert": delete only ids we are writing
     try:
         collection.delete(ids=ids)
     except Exception:
@@ -39,4 +48,4 @@ if __name__ == "__main__":
     )
 
     print(f"Stored {len(records)} chunks WITH explicit embeddings in Chroma.")
-    print(f"Embedding model: {settings.EMBEDDING_MODEL} | dim={dim}")
+    print(f"Collection: {collection_name} | Embedding model: {settings.EMBEDDING_MODEL} | dim={dim}")
